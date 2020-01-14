@@ -3,16 +3,23 @@
   "version": "0.1.0",
   "private": true,
   "dependencies": {
+    "@svgdotjs/svg.js": "^3.0.16",
     "@testing-library/jest-dom": "^4.2.4",
     "@testing-library/react": "^9.4.0",
     "@testing-library/user-event": "^7.2.1",
     "@types/jest": "^24.0.25",
+    "@types/lodash-es": "^4.17.3",
     "@types/node": "^12.12.24",
     "@types/react": "^16.9.17",
     "@types/react-dom": "^16.9.4",
+    "immutability-helper": "^3.0.1",
+    "lodash-es": "^4.17.15",
+    "node-sass": "^4.13.0",
     "react": "^16.12.0",
     "react-dom": "^16.12.0",
+    "react-hotkeys": "^2.0.0",
     "react-scripts": "3.3.0",
+    "styled-components": "^4.4.1",
     "typescript": "^3.7.4"
   },
   "scripts": {
