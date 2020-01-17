@@ -1,6 +1,8 @@
 import { Svg } from "@svgdotjs/svg.js";
 import BaseShape from "./BaseShape";
 
-export default function shapeBuilder<T extends BaseShape>(draw: Svg, shape: (new (draw: Svg) => T)) {
-    return (new shape(draw))
+export type ShapeClass = new (draw: Svg) => BaseShape
+
+export default function shapeBuilder<T extends BaseShape>(draw: Svg, shape: ShapeClass) {
+    return (new shape(draw)).build()
 }

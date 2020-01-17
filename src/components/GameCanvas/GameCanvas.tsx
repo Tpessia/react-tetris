@@ -1,14 +1,20 @@
 import { Rect, SVG, Svg } from '@svgdotjs/svg.js';
 import update from 'immutability-helper';
 import { cloneDeep } from 'lodash-es';
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { HotKeys } from "react-hotkeys";
 import getRandomInt from '../../utils/getRandomInt';
 import BaseShape from '../Shapes/BaseShape';
-import shapeBuilder from '../Shapes/shapeBuilder';
-import ShapeL from '../Shapes/ShapeTypes/ShapeL';
+import shapeBuilder, { ShapeClass } from '../Shapes/shapeBuilder';
 import configs from './configs';
 import './GameCanvas.scss';
+import ShapeLeftL from '../Shapes/ShapeTypes/ShapeLeftL';
+import ShapeLeftS from '../Shapes/ShapeTypes/ShapeLeftS';
+import ShapeLine from '../Shapes/ShapeTypes/ShapeLine';
+import ShapeRightL from '../Shapes/ShapeTypes/ShapeRightL';
+import ShapeRightS from '../Shapes/ShapeTypes/ShapeRightS';
+import ShapeSquare from '../Shapes/ShapeTypes/ShapeSquare';
+import ShapeT from '../Shapes/ShapeTypes/ShapeT';
 
 interface Position {
     x: number,
@@ -24,23 +30,23 @@ interface ShapeState {
 const GameCanvas: React.FC = () => {
     const [ref, setRef] = useState<HTMLElement | null>(null)
     const [game, setGame] = useState({ score: 0, paused: false, ended: false })
-    const [grid, setGrid] = useState<Rect[][]>([])
+    const grid = useRef<Rect[][]>([])
     const [draw, setDraw] = useState<Svg | null>(null)
     let shapes = useRef<ShapeState[]>([])
     const [tick, setTick] = useState<{ available: boolean, count: number }>({
         available: true, count: 0
     })
 
-    const getPositions = (shape: Svg) => {
+    const getPositions = (shape: BaseShape) => {
         const parentPosition = {
-            x: shape.x() / configs.pixel.widthT,
-            y: shape.y() / configs.pixel.heightT
+            x: shape.nested.x() / shape.widthT,
+            y: shape.nested.y() / shape.heightT
         }
         
-        const positions: Position[] = shape.children().map(s => {
+        const positions: Position[] = shape.nested.children().map(s => {
             const rect = s as Rect
-            const x = (rect.x() - configs.pixel.offset) / configs.pixel.widthT
-            const y = (rect.y() - configs.pixel.offset) / configs.pixel.heightT
+            const x = (rect.x() - shape.offset) / shape.widthT
+            const y = (rect.y() - shape.offset) / shape.heightT
             return {
                 x: x + parentPosition.x,
                 y: y + parentPosition.y,
@@ -51,13 +57,15 @@ const GameCanvas: React.FC = () => {
         return positions
     }
 
-    const checkColission = (draw: Svg, shape: Svg, delta: number = 0, positions?: Position[]) => {
+    const checkColission = useCallback((draw: Svg, shape: BaseShape, direction: 'left' | 'down' | 'right', delta: number = 0) => {
         let collision = false
 
-        if (!positions) positions = getPositions(shape)
+        let positions = getPositions(shape)
         
         for (let pos of positions) {
-            if (grid[pos.y+1]?.[pos.x]) {
+            if ((direction === 'down' && !!grid.current[pos.y+1]?.[pos.x]) ||
+                (direction === 'left' && !!grid.current[pos.y]?.[pos.x-1]) ||
+                (direction === 'right' && !!grid.current[pos.y]?.[pos.x+1])) {
                 collision = true
             }
         }
@@ -65,10 +73,10 @@ const GameCanvas: React.FC = () => {
         const deltaCrash = calcDeltaCrash(draw, shape) - delta
 
         return collision || deltaCrash <= 0
-    }
-
-    const calcDeltaCrash = (draw: Svg, shape: Svg) => {
-        return draw.height() - (shape.y() + configs.pixel.strokeWidth + shape.bbox().height)
+    }, [grid])
+    
+    const calcDeltaCrash = (draw: Svg, shape: BaseShape) => {
+        return draw.height() - (shape.nested.y() + shape.strokeWidth + shape.realStartHeight)
     }
 
     // STARTUP
@@ -119,11 +127,13 @@ const GameCanvas: React.FC = () => {
         if (game.paused || game.ended) return
 
         function createNewShape(draw: Svg) {
-            const shape = shapeBuilder(draw, ShapeL)
-                
-            const rndX = getRandomInt(0, configs.canvas.width - shape.nested.bbox().width)
-            const x = 0//rndX - rndX % configs.pixel.widthT
-            const y = -configs.pixel.heightT * 2
+            const shapes: ShapeClass[] = [ShapeLeftL,ShapeLeftS,ShapeLine,ShapeRightL,ShapeRightS,ShapeSquare,ShapeT]
+            const rndShape = shapes[getRandomInt(0,shapes.length-1)]
+            const shape = shapeBuilder(draw, rndShape)
+            
+            const rndX = getRandomInt(-shape.widthStartGap * shape.widthT, configs.canvas.width - shape.realStartWidth - shape.strokeWidth)
+            const x = rndX - rndX % shape.widthT
+            const y = - Math.floor(shape.rotationShapes[shape.rotation].length - shape.heightStartGap) * shape.heightT - shape.heightStartGap * shape.heightT
 
             shape.nested.x(x).y(y)
 
@@ -139,8 +149,8 @@ const GameCanvas: React.FC = () => {
             let active = shapes.current.find(e => e.active)
             
             if (active) {
-                const positions = getPositions(active.shape.nested)
-                const collision = checkColission(draw, active.shape.nested, 0, positions)
+                const positions = getPositions(active.shape)
+                const collision = checkColission(draw, active.shape, 'down')
                 
                 // COLLISION
                 if (collision) {
@@ -151,7 +161,7 @@ const GameCanvas: React.FC = () => {
                         return
                     }
 
-                    newGrid = cloneDeep(grid)
+                    newGrid = cloneDeep(grid.current)
 
                     for (let pos of positions) {
                         if (!newGrid[pos.y]) newGrid[pos.y] = []
@@ -185,9 +195,7 @@ const GameCanvas: React.FC = () => {
 
             // setState em um unico lugar evita problema de state diferente em closure (https://stackoverflow.com/a/58877875)
             if (newShapes) shapes.current = newShapes
-            if (newGrid) setGrid(newGrid)
-
-            console.log('s1',shapes)
+            if (newGrid) grid.current = newGrid
 
             if (tick.count < 100)
                 setTimeout(() => setTick({
@@ -195,11 +203,10 @@ const GameCanvas: React.FC = () => {
                     count: tick.count + 1
                 }), 1000)
         }
-    }, [tick, draw, shapes, game, grid])
+    }, [tick, draw, shapes, game, grid, checkColission])
 
     // CONTROLS
     const runActive = (run: (shape: BaseShape) => void) => {
-        console.log('s2',shapes)
         const active = shapes.current.find(e => e.active)
         if (active) run(active.shape)
     }
@@ -213,25 +220,37 @@ const GameCanvas: React.FC = () => {
        
     const handlers = {
         MOVE_UP: (event: any) => {
-            runActive(shape => shape.rotate())
+            runActive(shape => {
+                shape.rotate()
+                if (shape.nested.x() < -shape.widthStartGap * shape.widthT)
+                    shape.nested.x(shape.widthStartGap * shape.widthT)
+                else if (shape.nested.x() + shape.realStartWidth > configs.canvas.width)
+                    shape.nested.x(configs.canvas.width - shape.realStartWidth - shape.strokeWidth)
+                else {
+                    const y = shape.nested.y()
+                    shape.nested.y(shape.nested.y() - shape.heightT)
+                    if (draw && !checkColission(draw, shape, 'down'))
+                        shape.nested.y(y)
+                }
+            })
         },
         MOVE_DOWN: (event: any) => {
             runActive(shape => {
                 const y = shape.nested.y()
-                const h = configs.pixel.heightT
-                if (draw && checkColission(draw, shape.nested.y(y + h), configs.pixel.heightT)) {
-                    shape.nested.y(y)
+                const h = shape.heightT
+                if (draw && !checkColission(draw, shape, 'down')) {
+                    shape.nested.y(y + h)
                 }
             })
         },
         MOVE_LEFT: (event: any) => {
             runActive(shape => {
                 const x = shape.nested.x()
-                const w = configs.pixel.widthT
+                const w = shape.widthT
                 const nextPos = x - w
-                if (nextPos >= 0) {
-                    if (draw && checkColission(draw, shape.nested.x(nextPos))) {
-                        shape.nested.x(x)
+                if (nextPos >= -shape.widthStartGap * shape.widthT) {
+                    if (draw && !checkColission(draw, shape, 'left')) {
+                        shape.nested.x(nextPos)
                     }
                 }
             })
@@ -239,11 +258,11 @@ const GameCanvas: React.FC = () => {
         MOVE_RIGHT: (event: any) => {
             runActive(shape => {
                 const x = shape.nested.x()
-                const w = configs.pixel.widthT
+                const w = shape.widthT
                 const nextPos = x + w
-                if (nextPos + shape.nested.bbox().width <= configs.canvas.width) {
-                    if (draw && checkColission(draw, shape.nested.x(nextPos))) {
-                        shape.nested.x(x)
+                if (nextPos + shape.realStartWidth <= configs.canvas.width) {
+                    if (draw && !checkColission(draw, shape, 'right')) {
+                        shape.nested.x(nextPos)
                     }
                 }
             })
@@ -251,11 +270,9 @@ const GameCanvas: React.FC = () => {
     }
 
     return (
-        <>
-            <HotKeys keyMap={keyMap} handlers={handlers} >
-                <div ref={ref => setRef(ref)}></div>
-            </HotKeys>
-        </>
+        <HotKeys keyMap={keyMap} handlers={handlers}>
+            <div ref={ref => setRef(ref)}></div>
+        </HotKeys>
     )
 }
 
