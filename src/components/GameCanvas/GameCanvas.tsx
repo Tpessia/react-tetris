@@ -192,6 +192,27 @@ const GameCanvas: React.FC = () => {
             }
 
             active.shape.nested.y(active.shape.nested.y() + configs.pixel.heightT)
+            
+            const fullLines = newGrid?.reduce((acc,val,i) => {
+                if (val && val.filter(e => !!e).length === configs.canvas.gridWidth) acc.push(i)
+                return acc
+            }, [] as number[])
+            
+            if (fullLines) {
+                for (const i of fullLines) {
+                    if (newGrid?.[i]) {
+                        for (let j = 0; j < configs.canvas.gridWidth; j++) {
+                            if (newGrid[i][0]) {
+                                newGrid[i][0].remove()
+                                newGrid[i].splice(0,1)
+                            }
+                        }
+                    }
+                }
+
+                if (fullLines.length > 0)
+                    shapes.current.forEach(e => e.shape.nested.y(e.shape.nested.y() + e.shape.heightT))
+            }
 
             // setState em um unico lugar evita problema de state diferente em closure (https://stackoverflow.com/a/58877875)
             if (newShapes) shapes.current = newShapes
@@ -238,7 +259,7 @@ const GameCanvas: React.FC = () => {
             runActive(shape => {
                 const y = shape.nested.y()
                 const h = shape.heightT
-                if (draw && !checkColission(draw, shape, 'down')) {
+                if (draw && !checkColission(draw, shape, 'down', shape.heightT)) {
                     shape.nested.y(y + h)
                 }
             })
