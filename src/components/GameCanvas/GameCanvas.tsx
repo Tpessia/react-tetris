@@ -17,6 +17,7 @@ import configs from './configs';
 import './GameCanvas.scss';
 import { MdPause, MdPlayArrow } from 'react-icons/md';
 import { Canvas, CanvasWrapper, CanvasControls, CanvasScore } from './GameCanvasStyles';
+import FlatButton from '../FlatButton/FlatButton';
 const tetrisAudio = require('../../assets/tetris.mp3');
 
 type Grid = ((Rect | undefined)[] | undefined)[]
@@ -337,12 +338,14 @@ const GameCanvas: React.FC = () => {
                 <Canvas ref={ref => setRef(ref)} />
                 <CanvasControls>
                     <CanvasScore>{game.score}</CanvasScore>
-                    <button onClick={(event: any) => {
-                        // event.preventDefault()
-                        togglePlay()
-                    }}>
+                    <FlatButton color="#666" hovercolor="#333"
+                        onClick={(event: any) => {
+                            // event.preventDefault()
+                            togglePlay()
+                        }}
+                    >
                         {game.paused ? <MdPlayArrow /> : <MdPause />}
-                    </button>
+                    </FlatButton>
                     <br/>
                     Ended: {game.ended ? 'YES' : 'NO'}
                 </CanvasControls>
