@@ -1,13 +1,11 @@
 import { Rect, SVG, Svg } from '@svgdotjs/svg.js';
 import update from 'immutability-helper';
 import { cloneDeep } from 'lodash-es';
-import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { HotKeys } from "react-hotkeys";
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { GlobalHotKeys } from "react-hotkeys";
 import getRandomInt from '../../utils/getRandomInt';
 import BaseShape from '../Shapes/BaseShape';
 import shapeBuilder, { ShapeClass } from '../Shapes/shapeBuilder';
-import configs from './configs';
-import './GameCanvas.scss';
 import ShapeLeftL from '../Shapes/ShapeTypes/ShapeLeftL';
 import ShapeLeftS from '../Shapes/ShapeTypes/ShapeLeftS';
 import ShapeLine from '../Shapes/ShapeTypes/ShapeLine';
@@ -15,6 +13,13 @@ import ShapeRightL from '../Shapes/ShapeTypes/ShapeRightL';
 import ShapeRightS from '../Shapes/ShapeTypes/ShapeRightS';
 import ShapeSquare from '../Shapes/ShapeTypes/ShapeSquare';
 import ShapeT from '../Shapes/ShapeTypes/ShapeT';
+import configs from './configs';
+import './GameCanvas.scss';
+import { MdPause, MdPlayArrow } from 'react-icons/md';
+import { Canvas, CanvasWrapper, CanvasControls, CanvasScore } from './GameCanvasStyles';
+const tetrisAudio = require('../../assets/tetris.mp3');
+
+type Grid = ((Rect | undefined)[] | undefined)[]
 
 interface Position {
     x: number,
@@ -30,12 +35,22 @@ interface ShapeState {
 const GameCanvas: React.FC = () => {
     const [ref, setRef] = useState<HTMLElement | null>(null)
     const [game, setGame] = useState({ score: 0, paused: false, ended: false })
-    const grid = useRef<Rect[][]>([])
+    const grid = useRef<Grid>([])
     const [draw, setDraw] = useState<Svg | null>(null)
     let shapes = useRef<ShapeState[]>([])
     const [tick, setTick] = useState<{ available: boolean, count: number }>({
         available: true, count: 0
     })
+    let audioRef: HTMLAudioElement | null = null
+
+    const togglePlay = () => {
+        if (!game.ended) {
+            if (game.paused) audioRef?.play()
+            else audioRef?.pause()
+
+            setGame({ ...game, paused: !game.paused })
+        }
+    }
 
     const getPositions = (shape: BaseShape) => {
         const parentPosition = {
@@ -79,6 +94,19 @@ const GameCanvas: React.FC = () => {
         return draw.height() - (shape.nested.y() + shape.strokeWidth + shape.realStartHeight)
     }
 
+    const fixPosition = useCallback((shape: BaseShape) => {
+        if (shape.nested.x() < -shape.widthStartGap * shape.widthT)
+            shape.nested.x(shape.widthStartGap * shape.widthT)
+        else if (shape.nested.x() + shape.realStartWidth > configs.canvas.width)
+            shape.nested.x(configs.canvas.width - shape.realStartWidth - shape.strokeWidth)
+        else {
+            const y = shape.nested.y()
+            shape.nested.y(shape.nested.y() - shape.heightT)
+            if (draw && !checkColission(draw, shape, 'down'))
+                shape.nested.y(y)
+        }
+    }, [draw, checkColission])
+
     // STARTUP
     useEffect(() => {
         function startup() {
@@ -88,14 +116,16 @@ const GameCanvas: React.FC = () => {
                 const canvas = tempDraw
                     .rect(configs.canvas.width, configs.canvas.height)
                     .fill(configs.canvas.backgroundColor)
-    
+
                 let pattern = tempDraw.pattern(configs.pixel.widthT, configs.pixel.heightT, add => {
+                    add.rect(configs.pixel.widthT, configs.pixel.heightT)
+                        .fill(configs.canvas.patternBG)
                     add.rect(configs.pixel.width, configs.pixel.height)
                         .x(configs.pixel.offset).y(configs.pixel.offset)
-                        .fill('transparent')
+                        .fill(configs.canvas.patternInnerBG)
                         .stroke({
-                            color: 'red',
-                            width: configs.pixel.strokeWidth / 2
+                            color: configs.canvas.patternStroke,
+                            width: configs.canvas.patternWidth
                         })
     
                     // const width = configs.pixel.widthT - 1
@@ -144,7 +174,7 @@ const GameCanvas: React.FC = () => {
             setTick({ ...tick, available: false })
 
             let newShapes: ShapeState[] | null = null
-            let newGrid: Rect[][] | null = null
+            let newGrid: Grid | null = null
 
             let active = shapes.current.find(e => e.active)
             
@@ -157,7 +187,8 @@ const GameCanvas: React.FC = () => {
                     const ended = positions.some(p => p.y < 0)
 
                     if (ended) {
-                        setGame({ ...game, ended: true })
+                        audioRef?.pause()
+                        setGame({ ...game, paused: false, ended: true })
                         return
                     }
 
@@ -165,7 +196,7 @@ const GameCanvas: React.FC = () => {
 
                     for (let pos of positions) {
                         if (!newGrid[pos.y]) newGrid[pos.y] = []
-                        newGrid[pos.y][pos.x] = pos.pixel
+                        newGrid[pos.y]![pos.x] = pos.pixel
                     }
 
                     const index = shapes.current.indexOf(active)
@@ -193,75 +224,81 @@ const GameCanvas: React.FC = () => {
 
             active.shape.nested.y(active.shape.nested.y() + configs.pixel.heightT)
             
+            fixPosition(active.shape)
+
             const fullLines = newGrid?.reduce((acc,val,i) => {
                 if (val && val.filter(e => !!e).length === configs.canvas.gridWidth) acc.push(i)
                 return acc
-            }, [] as number[])
+            }, [] as number[]).reverse()
             
             if (fullLines) {
-                for (const i of fullLines) {
-                    if (newGrid?.[i]) {
-                        for (let j = 0; j < configs.canvas.gridWidth; j++) {
-                            if (newGrid[i][0]) {
-                                newGrid[i][0].remove()
-                                newGrid[i].splice(0,1)
-                            }
+                let lineCount = 0
+                for (let i of fullLines) {
+                    i += lineCount
+                    for (let j = 0; j < configs.canvas.gridWidth; j++) {
+                        if (newGrid?.[i]?.[j]) {
+                            newGrid[i]![j]!.remove()
+                            newGrid[i]![j] = undefined
                         }
                     }
+
+                    for (let j = i - 1; j >= 0; j--) {
+                        if (newGrid?.[j]) {
+                            newGrid[j]!.forEach(e => { if (e) e.y(e.y() + configs.pixel.heightT) })
+                            newGrid[j+1] = newGrid[j]
+                            newGrid[j] = undefined
+                        }
+                    }
+
+                    lineCount++
                 }
 
                 if (fullLines.length > 0)
-                    shapes.current.forEach(e => e.shape.nested.y(e.shape.nested.y() + e.shape.heightT))
+                    setGame({ ...game, score: game.score + Math.round(Math.pow(fullLines.length,1.75)) * 100 }) 
             }
 
             // setState em um unico lugar evita problema de state diferente em closure (https://stackoverflow.com/a/58877875)
             if (newShapes) shapes.current = newShapes
             if (newGrid) grid.current = newGrid
-
-            if (tick.count < 100)
-                setTimeout(() => setTick({
-                    available: true,
-                    count: tick.count + 1
-                }), 1000)
+            
+            let tickTime = 1000 - (game.score / 125000)
+            tickTime = tickTime < 200 ? 200 : tickTime 
+            
+            setTimeout(() => setTick({
+                available: true,
+                count: tick.count + 1
+            }), tickTime)
         }
-    }, [tick, draw, shapes, game, grid, checkColission])
+    }, [tick, game, draw, fixPosition, checkColission, audioRef])
 
     // CONTROLS
     const runActive = (run: (shape: BaseShape) => void) => {
         const active = shapes.current.find(e => e.active)
-        if (active) run(active.shape)
+        if (active && !game.paused && !game.ended) run(active.shape)
     }
 
     const keyMap = {
         MOVE_UP: 'up',
         MOVE_DOWN: 'down',
         MOVE_LEFT: 'left',
-        MOVE_RIGHT: 'right'
+        MOVE_RIGHT: 'right',
+        SPACE: 'space'
     }
        
     const handlers = {
         MOVE_UP: (event: any) => {
             runActive(shape => {
                 shape.rotate()
-                if (shape.nested.x() < -shape.widthStartGap * shape.widthT)
-                    shape.nested.x(shape.widthStartGap * shape.widthT)
-                else if (shape.nested.x() + shape.realStartWidth > configs.canvas.width)
-                    shape.nested.x(configs.canvas.width - shape.realStartWidth - shape.strokeWidth)
-                else {
-                    const y = shape.nested.y()
-                    shape.nested.y(shape.nested.y() - shape.heightT)
-                    if (draw && !checkColission(draw, shape, 'down'))
-                        shape.nested.y(y)
-                }
+                fixPosition(shape)
             })
         },
         MOVE_DOWN: (event: any) => {
             runActive(shape => {
                 const y = shape.nested.y()
                 const h = shape.heightT
-                if (draw && !checkColission(draw, shape, 'down', shape.heightT)) {
+                if (draw && !checkColission(draw, shape, 'down'))
                     shape.nested.y(y + h)
-                }
+                fixPosition(shape)
             })
         },
         MOVE_LEFT: (event: any) => {
@@ -274,6 +311,7 @@ const GameCanvas: React.FC = () => {
                         shape.nested.x(nextPos)
                     }
                 }
+                fixPosition(shape)
             })
         },
         MOVE_RIGHT: (event: any) => {
@@ -286,14 +324,30 @@ const GameCanvas: React.FC = () => {
                         shape.nested.x(nextPos)
                     }
                 }
+                fixPosition(shape)
             })
-        }
+        },
+        SPACE: (event: any) => togglePlay()
     }
 
     return (
-        <HotKeys keyMap={keyMap} handlers={handlers}>
-            <div ref={ref => setRef(ref)}></div>
-        </HotKeys>
+        <GlobalHotKeys allowChanges={true} keyMap={keyMap} handlers={handlers}>
+            <audio ref={ref => audioRef = ref} src={tetrisAudio} autoPlay loop />
+            <CanvasWrapper>
+                <Canvas ref={ref => setRef(ref)} />
+                <CanvasControls>
+                    <CanvasScore>{game.score}</CanvasScore>
+                    <button onClick={(event: any) => {
+                        // event.preventDefault()
+                        togglePlay()
+                    }}>
+                        {game.paused ? <MdPlayArrow /> : <MdPause />}
+                    </button>
+                    <br/>
+                    Ended: {game.ended ? 'YES' : 'NO'}
+                </CanvasControls>
+            </CanvasWrapper>
+        </GlobalHotKeys>
     )
 }
 

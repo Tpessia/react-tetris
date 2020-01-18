@@ -6,9 +6,13 @@ const configs = {
     canvas: {
         width: -1,
         height: -1,
-        backgroundColor: 'rgb(196,207,161)',
-        gridWidth: 20,
-        gridHeight: 20
+        backgroundColor: 'transparent',
+        patternBG: '#44444433',
+        patternInnerBG: '#55555533',
+        patternStroke: '#11111133',
+        patternWidth: 1,
+        gridWidth: 15,
+        gridHeight: 30
     },
     pixel: {
         offset: -1,
@@ -16,8 +20,8 @@ const configs = {
         heightT: -1,
         width: 10,
         height: 10,
-        backgroundColor: 'rgb(107,115,83)',
-        strokeColor: 'rgb(65,65,65)',
+        backgroundColor: '#888',
+        strokeColor: '#555',
         strokeWidth: 3
     }
 }
