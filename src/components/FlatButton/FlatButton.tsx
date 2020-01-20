@@ -2,28 +2,28 @@ import React, { useState } from 'react';
 import './FlatButton.scss';
 
 interface Props extends React.DetailedHTMLProps<React.ButtonHTMLAttributes<HTMLButtonElement>, HTMLButtonElement> {
-    color?: string,
-    hovercolor?: string
+    bg?: string,
+    hoverBg?: string
 }
 
-const FlatButton: React.FC<Props> = ({ children, ...props }) => {
-    const [state,setState] = useState({
-        hover: false,
-        focus: false
-    })
+const FlatButton: React.FC<Props> = ({ bg, hoverBg, children, style, onMouseEnter, onMouseLeave, ...props }) => {
+    const [hover,setHover] = useState(false)
 
-    
-    const active = () => state.hover || state.focus
+    const backgroundColor = (() => {
+        if (props.disabled) return '#ddd'
+        if (hover && hoverBg) return hoverBg
+        return bg ? bg : 'white'
+    })()
     
     return (
         <button {...props}
             style={{
-                backgroundColor: active() && props.hovercolor ? props.hovercolor : (props.color ? props.color : 'white')
+                ...style,
+                backgroundColor,
+                cursor: props.disabled ? 'default' : 'pointer'
             }}
-            onMouseEnter={() => setState({ ...state, hover: true })}
-            onMouseLeave={() => setState({ ...state, hover: false })}
-            onFocus={() => setState({ ...state, focus: true })}
-            onBlur={() => setState({ ...state, focus: false })}
+            onMouseEnter={e => { setHover(true); onMouseEnter?.(e); }}
+            onMouseLeave={e => { setHover(false); onMouseLeave?.(e); }}
         >
             {children}
         </button>

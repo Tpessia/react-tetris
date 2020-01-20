@@ -12,7 +12,7 @@ const configs = {
         patternStroke: '#11111133',
         patternWidth: 1,
         gridWidth: 15,
-        gridHeight: 30
+        gridHeight: 17
     },
     pixel: {
         offset: -1,
@@ -20,7 +20,7 @@ const configs = {
         heightT: -1,
         width: 10,
         height: 10,
-        backgroundColor: '#888',
+        backgroundColor: '#BBB',
         strokeColor: '#555',
         strokeWidth: 3
     }

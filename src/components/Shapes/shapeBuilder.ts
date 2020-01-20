@@ -3,6 +3,6 @@ import BaseShape from "./BaseShape";
 
 export type ShapeClass = new (draw: Svg) => BaseShape
 
-export default function shapeBuilder<T extends BaseShape>(draw: Svg, shape: ShapeClass) {
+export default function shapeBuilder(draw: Svg, shape: ShapeClass) {
     return (new shape(draw)).build()
 }

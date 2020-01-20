@@ -3,7 +3,9 @@ import update from 'immutability-helper';
 import { cloneDeep } from 'lodash-es';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { GlobalHotKeys } from "react-hotkeys";
+import { EnumDictionary } from '../../models/Dictionary';
 import getRandomInt from '../../utils/getRandomInt';
+import { Control } from '../GameBoy/GameBoy';
 import BaseShape from '../Shapes/BaseShape';
 import shapeBuilder, { ShapeClass } from '../Shapes/shapeBuilder';
 import ShapeLeftL from '../Shapes/ShapeTypes/ShapeLeftL';
@@ -15,9 +17,7 @@ import ShapeSquare from '../Shapes/ShapeTypes/ShapeSquare';
 import ShapeT from '../Shapes/ShapeTypes/ShapeT';
 import configs from './configs';
 import './GameCanvas.scss';
-import { MdPause, MdPlayArrow } from 'react-icons/md';
-import { Canvas, CanvasWrapper, CanvasControls, CanvasScore } from './GameCanvasStyles';
-import FlatButton from '../FlatButton/FlatButton';
+import { Canvas, CanvasDevice, CanvasNextShapeImg, CanvasOverlay, CanvasOverlayText, CanvasScore, CanvasWrapper } from './GameCanvasStyles';
 const tetrisAudio = require('../../assets/tetris.mp3');
 
 type Grid = ((Rect | undefined)[] | undefined)[]
@@ -33,25 +33,23 @@ interface ShapeState {
     active: boolean
 }
 
-const GameCanvas: React.FC = () => {
+interface Props {
+    control: { control: Control } | null
+}
+
+const GameCanvas: React.FC<Props> = props => {
     const [ref, setRef] = useState<HTMLElement | null>(null)
-    const [game, setGame] = useState({ score: 0, paused: false, ended: false })
+    const [game, setGame] = useState({ score: 0, paused: true, ended: false })
     const grid = useRef<Grid>([])
     const [draw, setDraw] = useState<Svg | null>(null)
     let shapes = useRef<ShapeState[]>([])
     const [tick, setTick] = useState<{ available: boolean, count: number }>({
         available: true, count: 0
     })
-    let audioRef: HTMLAudioElement | null = null
-
-    const togglePlay = () => {
-        if (!game.ended) {
-            if (game.paused) audioRef?.play()
-            else audioRef?.pause()
-
-            setGame({ ...game, paused: !game.paused })
-        }
-    }
+    let audioRef = useRef<HTMLAudioElement | null>(null)
+    const [lastControl,setLastControl] = useState<{ control: Control } | null>(null)
+    const [sound,setSound] = useState<boolean>(true)
+    const [nextShape,setNextShape] = useState<BaseShape | null>(null)
 
     const getPositions = (shape: BaseShape) => {
         const parentPosition = {
@@ -85,10 +83,10 @@ const GameCanvas: React.FC = () => {
                 collision = true
             }
         }
-
+        
         const deltaCrash = calcDeltaCrash(draw, shape) - delta
 
-        return collision || deltaCrash <= 0
+        return direction === 'down' ? collision || deltaCrash <= 0 : collision
     }, [grid])
     
     const calcDeltaCrash = (draw: Svg, shape: BaseShape) => {
@@ -160,7 +158,16 @@ const GameCanvas: React.FC = () => {
         function createNewShape(draw: Svg) {
             const shapes: ShapeClass[] = [ShapeLeftL,ShapeLeftS,ShapeLine,ShapeRightL,ShapeRightS,ShapeSquare,ShapeT]
             const rndShape = shapes[getRandomInt(0,shapes.length-1)]
-            const shape = shapeBuilder(draw, rndShape)
+            
+            let shape: BaseShape
+            if (nextShape === null) {
+                shape = shapeBuilder(draw, rndShape)
+                const newRndShape = shapes[getRandomInt(0,shapes.length-1)]
+                setNextShape(new newRndShape(draw))
+            } else {
+                shape = nextShape.build()
+                setNextShape(new rndShape(draw))
+            }
             
             const rndX = getRandomInt(-shape.widthStartGap * shape.widthT, configs.canvas.width - shape.realStartWidth - shape.strokeWidth)
             const x = rndX - rndX % shape.widthT
@@ -186,9 +193,9 @@ const GameCanvas: React.FC = () => {
                 // COLLISION
                 if (collision) {
                     const ended = positions.some(p => p.y < 0)
-
+                    
                     if (ended) {
-                        audioRef?.pause()
+                        audioRef.current?.pause()
                         setGame({ ...game, paused: false, ended: true })
                         return
                     }
@@ -262,7 +269,7 @@ const GameCanvas: React.FC = () => {
             if (newShapes) shapes.current = newShapes
             if (newGrid) grid.current = newGrid
             
-            let tickTime = 1000 - (game.score / 125000)
+            let tickTime = 800 - game.score * (800/10000)
             tickTime = tickTime < 200 ? 200 : tickTime 
             
             setTimeout(() => setTick({
@@ -270,12 +277,102 @@ const GameCanvas: React.FC = () => {
                 count: tick.count + 1
             }), tickTime)
         }
-    }, [tick, game, draw, fixPosition, checkColission, audioRef])
+    }, [tick, game, draw, fixPosition, checkColission, audioRef, nextShape])
 
     // CONTROLS
     const runActive = (run: (shape: BaseShape) => void) => {
         const active = shapes.current.find(e => e.active)
         if (active && !game.paused && !game.ended) run(active.shape)
+    }
+
+    const moveUp = () => {
+        runActive(shape => {
+            shape.rotate()
+            fixPosition(shape)
+        })
+    }
+
+    const moveDown = () => {
+        runActive(shape => {
+            const y = shape.nested.y()
+            const h = shape.heightT
+            if (draw && !checkColission(draw, shape, 'down'))
+                shape.nested.y(y + h)
+            fixPosition(shape)
+        })
+    }
+
+    const moveLeft = () => {
+        runActive(shape => {
+            const x = shape.nested.x()
+            const w = shape.widthT
+            const nextPos = x - w
+            if (nextPos >= -shape.widthStartGap * shape.widthT) {
+                if (draw && !checkColission(draw, shape, 'left')) {
+                    shape.nested.x(nextPos)
+                }
+            }
+            fixPosition(shape)
+        })
+    }
+
+    const moveRight = () => {
+        runActive(shape => {
+            const x = shape.nested.x()
+            const w = shape.widthT
+            const nextPos = x + w
+            if (nextPos + shape.realStartWidth <= configs.canvas.width) {
+                if (draw && !checkColission(draw, shape, 'right')) {
+                    shape.nested.x(nextPos)
+                }
+            }
+            fixPosition(shape)
+        })
+    }
+
+    const togglePlay = () => {
+        if (game.paused && sound) audioRef.current?.play()
+        else audioRef.current?.pause()
+
+        if (game.ended) {
+            draw?.remove()
+            setDraw(null)
+            grid.current = []
+            shapes.current = []
+            setNextShape(null)
+            setLastControl(null)
+            setGame({ score: 0, paused: false, ended: false })
+            setTick({ available: true, count: 0 })
+
+            if (audioRef.current) {
+                audioRef.current.currentTime = 0
+                audioRef.current.play()
+            }
+        }
+        else {
+            setGame({ ...game, paused: !game.paused })
+        }
+    }
+
+    const toggleSound = () => {
+        if (sound) audioRef.current?.pause()
+        else if (!game.paused) audioRef.current?.play()
+        setSound(!sound)
+    }
+
+    const gameBoyMap: EnumDictionary<Control, () => void> = {
+        [Control.Up]: moveUp,
+        [Control.Down]: moveDown,
+        [Control.Left]: moveLeft,
+        [Control.Right]: moveRight,
+        [Control.Start]: togglePlay,
+        [Control.Select]: toggleSound
+    }
+
+    if (props.control && props.control !== lastControl) {
+        setLastControl(props.control)
+        const command = gameBoyMap[props.control.control]
+        if (command) command()
     }
 
     const keyMap = {
@@ -287,69 +384,24 @@ const GameCanvas: React.FC = () => {
     }
        
     const handlers = {
-        MOVE_UP: (event: any) => {
-            runActive(shape => {
-                shape.rotate()
-                fixPosition(shape)
-            })
-        },
-        MOVE_DOWN: (event: any) => {
-            runActive(shape => {
-                const y = shape.nested.y()
-                const h = shape.heightT
-                if (draw && !checkColission(draw, shape, 'down'))
-                    shape.nested.y(y + h)
-                fixPosition(shape)
-            })
-        },
-        MOVE_LEFT: (event: any) => {
-            runActive(shape => {
-                const x = shape.nested.x()
-                const w = shape.widthT
-                const nextPos = x - w
-                if (nextPos >= -shape.widthStartGap * shape.widthT) {
-                    if (draw && !checkColission(draw, shape, 'left')) {
-                        shape.nested.x(nextPos)
-                    }
-                }
-                fixPosition(shape)
-            })
-        },
-        MOVE_RIGHT: (event: any) => {
-            runActive(shape => {
-                const x = shape.nested.x()
-                const w = shape.widthT
-                const nextPos = x + w
-                if (nextPos + shape.realStartWidth <= configs.canvas.width) {
-                    if (draw && !checkColission(draw, shape, 'right')) {
-                        shape.nested.x(nextPos)
-                    }
-                }
-                fixPosition(shape)
-            })
-        },
+        MOVE_UP: (event: any) => moveUp(),
+        MOVE_DOWN: (event: any) => moveDown(),
+        MOVE_LEFT: (event: any) => moveLeft(),
+        MOVE_RIGHT: (event: any) => moveRight(),
         SPACE: (event: any) => togglePlay()
     }
 
     return (
         <GlobalHotKeys allowChanges={true} keyMap={keyMap} handlers={handlers}>
-            <audio ref={ref => audioRef = ref} src={tetrisAudio} autoPlay loop />
-            <CanvasWrapper>
-                <Canvas ref={ref => setRef(ref)} />
-                <CanvasControls>
-                    <CanvasScore>{game.score}</CanvasScore>
-                    <FlatButton color="#666" hovercolor="#333"
-                        onClick={(event: any) => {
-                            // event.preventDefault()
-                            togglePlay()
-                        }}
-                    >
-                        {game.paused ? <MdPlayArrow /> : <MdPause />}
-                    </FlatButton>
-                    <br/>
-                    Ended: {game.ended ? 'YES' : 'NO'}
-                </CanvasControls>
-            </CanvasWrapper>
+            <audio ref={ref => audioRef.current = ref} src={tetrisAudio} loop />
+            <CanvasDevice>
+                <CanvasWrapper>
+                    {nextShape ? <CanvasNextShapeImg src={`shapes/${nextShape.type}.png`} alt={nextShape.type} /> : <></>}
+                    {nextShape ? <CanvasScore>{game.score}</CanvasScore> : <></>}
+                    {game.ended ? (<CanvasOverlay><CanvasOverlayText>GAME OVER</CanvasOverlayText></CanvasOverlay>) : <></>}
+                    <Canvas ref={ref => setRef(ref)} />
+                </CanvasWrapper>
+            </CanvasDevice>
         </GlobalHotKeys>
     )
 }

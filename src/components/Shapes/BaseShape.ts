@@ -3,6 +3,16 @@ import { EnumDictionaryStrict } from '../../models/Dictionary';
 import configs from '../GameCanvas/configs';
 import getRandomInt from '../../utils/getRandomInt';
 
+export enum ShapeType {
+    ShapeLeftL = 'ShapeLeftL',
+    ShapeRightL = 'ShapeRightL',
+    ShapeLeftS = 'ShapeLeftS',
+    ShapeRightS = 'ShapeRightS',
+    ShapeLine = 'ShapeLine',
+    ShapeSquare = 'ShapeSquare',
+    ShapeT = 'ShapeT'
+}
+
 export enum Rotation {
     Up,
     Right,
@@ -17,6 +27,8 @@ const rotations = Object.values(Rotation).filter(e => typeof(e) === 'number') as
 
 export default abstract class BaseShape {
     abstract rotationShapes: RotationShapes
+
+    abstract type: ShapeType
 
     nested: Svg
     pixels: Rect[] = []

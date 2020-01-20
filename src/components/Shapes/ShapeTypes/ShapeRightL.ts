@@ -1,6 +1,8 @@
-import BaseShape, { Rotation } from '../BaseShape';
+import BaseShape, { Rotation, ShapeType } from '../BaseShape';
 
 export default class ShapeRightL extends BaseShape {
+    type = ShapeType.ShapeRightL
+    
     rotationShapes = {
         [Rotation.Up]: [
             [0,4,0],

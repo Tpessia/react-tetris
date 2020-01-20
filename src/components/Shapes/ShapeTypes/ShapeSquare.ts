@@ -1,6 +1,8 @@
-import BaseShape, { Rotation } from '../BaseShape';
+import BaseShape, { Rotation, ShapeType } from '../BaseShape';
 
 export default class ShapeSquare extends BaseShape {
+    type = ShapeType.ShapeSquare
+    
     rotationShapes = {
         [Rotation.Up]: [
             [1,2],
