@@ -2,6 +2,8 @@
 
 Tetris game built with React.js and SVG.js as a one week self challenge.
 
+![alt text](https://raw.githubusercontent.com/Tpessia/react-tetris/master/screen_capture.png)
+
 ## Controls
 
 ### Keyboard
